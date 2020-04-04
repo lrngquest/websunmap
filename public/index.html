@@ -1,0 +1,24 @@
+<html>
+    <head>  <!--   removed (no-op) style.css -->
+        <meta name="myCanvas" content="width=device-width, initial-scale=1">
+        <title>Sunmap</title>
+    </head>
+
+    <body>
+    	<h1>Sunmap</h1>
+    	<h3>with timestamp and countdown of seconds to next update</h3>
+        <!-- add for img(s)  -->
+        <div>
+        <img hidden id="dayImg"  src="worldmap.jpg" />
+        <img hidden id="nightImg" src="worldmap_night.jpg">
+        </div>
+        <!-- add for canvas -->
+        <canvas id="myCanvas" width="800" height="400"
+                style="border:1px solid #000000;"/>
+
+        <canvas id="cvsNit" width="800" height="400" />
+        
+        <!-- Scripts (ala Markdownify) -->
+        <script src="/compiledjs/main.js"></script>
+    </body>
+</html>
