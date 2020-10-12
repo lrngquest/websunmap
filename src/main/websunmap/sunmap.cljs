@@ -250,11 +250,10 @@
 
 (defn last-lat "" [rows]
   (reduce
-   (fn [a v]  (if (> ((rows v) 3) 0)  (reduced v)  a) )
-   0  (reverse (range 200 400)) )   )
+   (fn [a v]  (if (> ((rows v) 3) 0)  (reduced v)  a)) 0  (range 399 199 -1) )  )
 
 
 (defn get-night-v "vector for painting night rows" [timeJD]
   (let [rws1            (m1  timeJD)
         [rows Nr So]    (m2x (first-lat rws1) (last-lat rws1) rws1)   ]
-    (vec (map (partial frv3 Nr So ) rows) )    )  )
+    (mapv (partial frv3 Nr So ) rows)    )  )

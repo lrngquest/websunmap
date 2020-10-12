@@ -13,10 +13,10 @@
 (defn copyLineSeg "copy partial row of pixels src->dest" [dest y src x0 w]
   ;; note 1 pixel (x) ==> 4 items: R G B A   " processing" :: 1 iter-per-pixel
   (doseq [x (range x0 (+ x0 w))]
-      (aset dest (locc x y)  (aget src (locc x y) ))
-      (aset dest (+ 1 (locc x y)) (aget src (+ 1 (locc x y))))
-      (aset dest (+ 2 (locc x y)) (aget src (+ 2 (locc x y))))
-      (aset dest (+ 3 (locc x y)) (aget src (+ 3 (locc x y))))    )  )
+    (let [l0 (locc x y)   l1 (+ 1 l0)   l2 (+ 1 l1)   l3 (+ 1 l2) ]
+      (aset dest l0 (aget src l0))     (aset dest l1 (aget src l1))
+      (aset dest l2 (aget src l2))     (aset dest l3 (aget src l3)) )    )  )
+
 
 (defn cpy1 "" [[y xa wa] dest  srcni]  (copyLineSeg dest y  srcni  xa wa ) )
 
@@ -30,7 +30,7 @@
      (. now getUTCHours)    (. now getUTCMinutes)    (. now getUTCSeconds) ]
     )  )
 
-(def secs-per-day 86400)    (def maxcnt 150)   (def ntrvl 10000) ;;in msec
+(def secs-per-day 86400)  (def maxcnt 150)  (def ntrvl 2000)  (def th 1)
 
 (defn init-state "" []
   (let [now  (nowAsV )  j-d  (sm/get-jd now)  ]
@@ -42,7 +42,7 @@
         now-d-t     (nowAsV )
         now-JD      (sm/get-jd  now-d-t)
         nxt-cnt     (->> (- now-JD tJD) ( * secs-per-day  ) (- maxcnt  ) )
-        nxt-app-st  (if (<= nxt-cnt 2) ;;was 0
+        nxt-app-st  (if (<= nxt-cnt th)
  ;; then update  timestamp countdown _and_ image
                       {:d-t now-d-t   :tJD now-JD   :countdown maxcnt
                        :night-v (sm/get-night-v now-JD)}
@@ -54,7 +54,7 @@
 (defn draw-msg "" [ctx wd ht fmtdstr]
   (set! (. ctx -fillStyle) "red")
   (set! (. ctx -font) "16px monospace")
-  (.fillText ctx fmtdstr (- wd 280) (- ht 20) )   )
+  (.fillText ctx fmtdstr (- wd 320) (- ht 20) )   )
 
 
 (defn paint-only "" [ ]
@@ -82,7 +82,7 @@
     
     (.putImageData ctx imgOst 0 0)  ;;s/imgOdat/imgOst/ !
 
-    (->> (goog.string.format "UTC %4d-%02d-%02d %2d:%02d:%02d  %3d"
+    (->> (goog.string.format "UTC %4d-%02d-%02d %2d:%02d:%02d   %3d"
                              y m d h mt s  countdown)
          (draw-msg ctx wd ht ))       )  )
 
