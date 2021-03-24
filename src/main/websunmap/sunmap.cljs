@@ -1,10 +1,9 @@
 (ns websunmap.sunmap)
 ;; Sun map from current time, daytime, nighttime maps.  Started 2017Jun02
 
-;;Note
-;; Code with CamelCase names should be considered translation (or paraphrase)
-;; of code from indicated packages/classes of "Sky View Cafe" which all
-;; carry the following notice:
+;;NOTE Code with CamelCase names should be considered translation (or
+;; paraphrase) of Java code from indicated packages/classes of "Sky View Cafe" 
+;; which carry the following notice:
 ;;   Copyright (C) 2000-2007 by Kerry Shetline, kerry@shetline.com.
 ;;   This code is free for public use in any non-commercial application. All
 ;;   other uses are restricted without prior consent of the author, Kerry
@@ -16,10 +15,8 @@
 ;; from org.shetline.math.MathUtil
 (defn cos_deg "" [deg] (Math/cos (* deg (/ Math/PI 180.0))))
 (defn ifloor "" [x]     (int (Math/floor x)) )
-(defn interpolate "" [ x0 x x1 y0 y1]
-  (cond
-   (= x0 x1)  y0
-   :else     (+ y0 (/ (* (- x x0) (- y1 y0)) (- x1 x0)) ) )    )
+(defn ^double interpolate "" [ x0 x x1 y0 y1]
+   (if (= x0 x1)   y0   (+ y0 (/ (* (- x x0) (- y1 y0)) (- x1 x0)) ) )   )
 
 (defn iround "" [x]     (int (Math/round (double x))) )
 (defn rmod   "" [ x y]  (- x (* (Math/floor (/ x y)) y) )  )
@@ -75,7 +72,7 @@
                  (limitNegOneToOne (+ (* (Math/sin B) (Math/cos E))
                                       (* (Math/cos B) (Math/sin E) (Math/sin L))
                                       ) ) )
-     :radius 0.0 }  )   )  ;; thus a SP3D  ;; init test OK Sep06
+     :radius 0.0 }  )   )  ;; thus a SphericalPosition3D
 
 
 ;; from org.shetline.astronomy.SolarSystem
@@ -85,6 +82,7 @@
      (- (+ 280.46061837 (* 360.98564736629 t) (* 0.000387933 T2))
         (/ T3 38710000.0))
      360.0)  )    )
+
 
 (defn getEclipticPosition
   "subset -- case planet:SUN flags:QUICK_SUN only! EV"  [planet timeJDE flags]
@@ -101,8 +99,7 @@
                (+ 1.0 (* e (cos_deg (+ M C)))) )  ]
     {:longitude (* D2Rad L)  :latitude 0.0  :radius R} )   ) ;; thus ret SP3D
 
-(defn getEquatorialPosition  "subset for MEAN_OBLIQUITY::1 usecase "
-  [planet timeJDE obs flags]
+(defn getEquatorialPosition "only MEAN_OBLIQUITY::1" [planet timeJDE obs flags]
   (let [eclipticPos  (getEclipticPosition planet timeJDE  flags)  ]
     (eclipticToEquatorial eclipticPos timeJDE 1) )  )
 
@@ -146,7 +143,7 @@
 
 ;;from org.shetline.skyviewcafe.MapView  and ShadowedMap
 (def imageWidth  800)        (def halfImageWidth  (/ imageWidth 2))
-(def imageHeight 400)        (def halfImageHeight (/ imageHeight 2))
+(def imageHeight 400)        (def equator (/ imageHeight 2)) ;;halfImageHeight
 (def SUN 0)                  (def DAYLIGHT_EXPAND 1.0) ;;degrees
 (def r  (cos_deg DAYLIGHT_EXPAND))     (def s_d_DE  (sin_deg DAYLIGHT_EXPAND))
 
@@ -155,36 +152,47 @@
   (rmod (+ halfImageWidth (* (/ longit 360.0) imageWidth) ) imageWidth)  )
 
 
-(defn m1inner "extracted fn;  'body' of orig. loop, incl. vector 'update'"
-  [invec a msinLat cosLat x_adj z_adj sunLon]
-  (let [sindeg_a (sin_deg a)
-        cosdeg_a (cos_deg a)
-        x   (+ (* msinLat sindeg_a r) x_adj)
-        y   (* cosdeg_a r)
-        z   (+ (* cosLat sindeg_a r) z_adj)
-        pos (convertRectangular x y z)
-        L   (getLongitudeDeg pos)        ;; aka daySpan below
-        B   (getLatitudeDeg pos)
-        yi  (max (min
-                  (- halfImageHeight
-                     (iround (* (/ B 180.0) imageHeight)))
-                  (- imageHeight 1))
+(defn ^double interpolateLongitude "" [ x0 x x1 y0 y1]
+  (let [y1a (cond
+             (< y1 (- y0 halfImageWidth))  (+ y1 imageWidth)
+             (> y1 (+ y0 halfImageWidth))  (- y1 imageWidth)
+             :else                         y1)   ] 
+    (rmod (interpolate x0 x x1 y0 y1a)  imageWidth) )  )
+
+
+(def poles-lit (atom {}) )     (def flL (atom {}) )
+(def cols (atom {:dayStart  (make-array Double/TYPE   imageHeight)
+                 :dayEnd    (make-array Double/TYPE   imageHeight)
+                 :daySpan   (make-array Double/TYPE   imageHeight)
+                 :iDayStart (make-array Integer/TYPE imageHeight)
+                 :iDayEnd   (make-array Integer/TYPE imageHeight)  }) )
+
+(defn m1asgn "for cols" [ a msinLat cosLat x_adj z_adj sunLon]
+  (let [sindeg_a  (sin_deg a)
+        cosdeg_a  (cos_deg a)
+        x         (+ (* msinLat sindeg_a r) x_adj)
+        y         (* cosdeg_a r)
+        z         (+ (* cosLat sindeg_a r) z_adj)
+        pos       (convertRectangular x y z)
+        L         (getLongitudeDeg pos)        ;; aka daySpan below
+        B         (getLatitudeDeg pos)
+        yi  (max (min  (- equator (iround (* (/ B 180.0) imageHeight)))
+                       (- imageHeight 1))
                  0)
-        dayStart (longit_to_x (- sunLon L))
-        dayEnd   (longit_to_x (+ sunLon L))
-        iDayStart (ifloor dayStart)
-        iDayend   (ifloor dayEnd)
-        fiveTup  (if (> (Math/abs (double L)) 0.1)
-                   [dayStart dayEnd  L   iDayStart iDayend yi ]
-                   [0        0       0   -1        0       yi ] )     ]
-    (assoc invec yi fiveTup) )    )
+        {:keys [dayStart dayEnd daySpan iDayStart iDayEnd]}  @cols
+        daySt  (longit_to_x (- sunLon L))
+        dayEn  (longit_to_x (+ sunLon L))    ]
 
-(defn defaultrows "default vals with self-index as last  (frv3...)" []
-  (reduce   (fn [a v] (assoc a  v [0 0 0 -1 0 v] ))
-            (vec (repeat imageHeight [] ))  (range imageHeight))  )
+    (when (> (Math/abs (double L)) 0.1)
+      (aset dayStart  yi (double daySt ))
+      (aset dayEnd    yi (double dayEn ))
+      (aset daySpan   yi (double L))
+      (aset iDayStart yi (ifloor daySt))
+      (aset iDayEnd   yi (ifloor dayEn))  ) )   )
 
-(defn m1 "" [ timeJDU]
-  (let [timeJDE (UT_to_TDB timeJDU) ; from UTConvertor
+
+(defn m1A "using column-arrays" [timeJDU]
+  (let [timeJDE (UT_to_TDB timeJDU)     ; from UTConvertor
         pos0    (getEquatorialPosition SUN timeJDE 0 32) ;; 32==> QUICK_SUN
         sdrlTm  (getGreenwichMeanSiderealTime timeJDU)
         sunLon  (- (getRightAscensionDeg pos0) sdrlTm)
@@ -193,67 +201,62 @@
         x_adj   (* s_d_DE (- 0 cosLat))
         msinLat (- 0 (sin_deg sunLat) )
         z_adj   (* s_d_DE msinLat)  ]
-    (reduce
-     (fn [outvec v] (m1inner outvec v msinLat cosLat x_adj  z_adj sunLon)  )
-     (defaultrows )  (range -90 91)  )  )   )
+    (doseq [i (range imageHeight)]  (aset (:iDayStart @cols) i -1) )
+    (doseq [v (range -90 91)]  (m1asgn v msinLat cosLat x_adj z_adj sunLon) )   
+    )  )
 
 
-(defn interpolateLongitude "" [ x0 x x1 y0 y1]
-  (let [y1a (cond
-             (< y1 (- y0 halfImageWidth))  (+ y1 imageWidth)
-             (> y1 (+ y0 halfImageWidth))  (- y1 imageWidth)
-             :else                         y1)   ] 
-    (rmod (interpolate x0 x x1 y0 y1a)  imageWidth) )  )
+(defn m2 "ala orignal column-arrays" []
+  (reset! flL {:firstLat -1  :lastLat -1})
+  (let [{:keys [dayStart dayEnd daySpan iDayStart iDayEnd]}  @cols ]
+    
+    (doseq [i (range imageHeight)]
+      (when (>= (aget ^ints iDayStart i) 0) ;;i.e. valid "row"
+        
+        (when (< (:firstLat @flL)0)  (swap! flL assoc :firstLat i)) ;;only once
 
-(defn m2inner "extr fn" [invec lastLat j i]
-  (let [[dStartLL dEndLL dSpanLL unused1 unused2] (invec lastLat)
-        [dStartI  dEndI  dSpanI  unused3 unused4] (invec i)
-        dayStart  (interpolateLongitude lastLat j i dStartLL dStartI)
-        dayEnd    (interpolateLongitude lastLat j i dEndLL   dEndI)
-        ;_ (println "M2I"lastLat " "j " "i " " )
-        daySpan   (interpolate          lastLat j i dSpanLL  dSpanI)   ]
-    (assoc invec j
-           [dayStart dayEnd daySpan (ifloor dayStart) (ifloor dayEnd) j ] ) )  )
+        (let [{:keys [ lastLat]}  @flL]
+          (when (and (> lastLat 0)  (> i (inc lastLat)))
+            (doseq [j (range (inc lastLat) i)]
+              (aset dayStart j
+                    (interpolateLongitude   lastLat j i
+                  (aget ^doubles dayStart lastLat) (aget ^doubles dayStart i)))
+              (aset dayEnd   j
+                    (interpolateLongitude  lastLat j i
+                  (aget ^doubles dayEnd lastLat) (aget ^doubles dayEnd i) ))
+              (aset daySpan  j
+                    (interpolate  lastLat j i
+                  (aget ^doubles daySpan lastLat) (aget ^doubles daySpan i) ))
+              (aset iDayStart j (ifloor (aget ^doubles dayStart j)))
+              (aset iDayEnd   j (ifloor (aget ^doubles dayEnd   j))) ) ;;doseq j
+            ) ;; when and
+          
+          (swap! flL assoc :lastLat i) )  )  ) ;;let  ;;when >=    ;;doseq i
+    
+    (let [{:keys [firstLat lastLat]}  @flL]
+      (reset! poles-lit {
+              :north-pole-lit (> (aget ^doubles daySpan firstLat)
+                                 (aget ^doubles daySpan (inc firstLat)) )
+              :south-pole-lit (> (aget ^doubles daySpan lastLat)
+                                 (aget ^doubles daySpan (dec lastLat))  ) } )
+       ) )  )
 
-
-(defn m2bb "bridge the gap by interpolating as needed" [tLastLat i rowsv]
-  (reduce (fn [a v]
-            (if (>= ((a i)3) 0)  (m2inner a tLastLat v i)  (reduced a) )    )
-          rowsv  (range (inc tLastLat) i)  )    )
-
-
-(defn m2x "find and fill gaps" [ firstLat uLastLat rowsv]
-  (let [[rws tLL] (reduce
-                   (fn [[rows tLastLat]  v]
-                     [ (m2bb tLastLat v rows)
-                       (if (>= ((rows v)3) 0)  v  tLastLat) ] )
-                   [rowsv  firstLat]   (range (inc firstLat) uLastLat))   ]
-    [rws
-     (> ((rws firstLat)  2) ((rws (inc firstLat))  2) )  ;; ==> north-pole-lit
-     (> ((rws uLastLat)  2) ((rws (dec uLastLat))  2) ) ] )   )
-
-
-(defn frv3 "" [north-pole-lit south-pole-lit  row]
-  (let [[a b c daSt daEn y] row  equator halfImageHeight  imgW    imageWidth]
-    (if (>= daSt 0)
-      (if (< daSt daEn)
-        [y 0 (inc daSt)  y daEn (- imgW daEn) ]     ;; 2 night seg
-        [y daEn (- (inc daSt) daEn)           ] )   ;; 1
+      
+(defn form-raster-v "" [ y]
+  (let [{:keys [ iDayStart iDayEnd]}  @cols
+        {:keys [north-pole-lit south-pole-lit]} @poles-lit
+        daySt  (aget ^ints iDayStart y)    dayEn  (aget ^ints iDayEnd y)    ]
+    (if (>= daySt 0)
+      (if (< daySt dayEn)
+        [y 0 (inc daySt) y dayEn (- imageWidth  dayEn) ]  ;; 2 night seg
+        [                y dayEn (- (inc daySt) dayEn) ]) ;; 1
       (if (or (and (not north-pole-lit) (< y equator))
               (and (not south-pole-lit) (> y equator)) )
-        [y 0 imgW] ;; full-width night line
-        [] ) ) )   )   ;; empty ==>  full day line
+        [y 0 imageWidth] ;; full-width night line  else   full day line
+        [] ) ) )   )
 
 
-(defn first-lat "" [rows]
-  (reduce (fn [a v]  (if (> ((rows v)3) 0) (reduced v)  a) )  400 (range 200)) )
-
-(defn last-lat "" [rows]
-  (reduce
-   (fn [a v]  (if (> ((rows v) 3) 0)  (reduced v)  a)) 0  (range 399 199 -1) )  )
-
-
-(defn get-night-v "vector for painting night rows" [timeJD]
-  (let [rws1            (m1  timeJD)
-        [rows Nr So]    (m2x (first-lat rws1) (last-lat rws1) rws1)   ]
-    (mapv (partial frv3 Nr So ) rows)    )  )
+(defn get-night-v "for painting night rows" [timeJD]
+  (m1A timeJD)
+  (m2)
+  (reduce (fn [a y] (conj a  (form-raster-v y)) ) [] (range imageHeight))  )
